@@ -1,12 +1,16 @@
 package fr.ixsou.battleroyale.game;
 
 import fr.ixsou.battleroyale.Main;
+import fr.ixsou.battleroyale.listeners.GameListener;
 import fr.ixsou.battleroyale.utils.ScoreboardManager;
 import org.bukkit.*;
 import org.bukkit.configuration.ConfigurationSection;
 import org.bukkit.entity.Firework;
 import org.bukkit.entity.Player;
+import org.bukkit.inventory.ItemStack;
 import org.bukkit.inventory.meta.FireworkMeta;
+import org.bukkit.potion.PotionEffect;
+import org.bukkit.potion.PotionEffectType;
 import org.bukkit.scheduler.BukkitRunnable;
 import org.bukkit.boss.BossBar;
 import org.bukkit.boss.BarColor;
@@ -92,9 +96,6 @@ public class GameManager {
 
     private void freezePlayer(Player player) {
         player.setGameMode(GameMode.ADVENTURE);
-        player.setWalkSpeed(0f);
-        player.setFlySpeed(0f);
-        player.setSprinting(false);
         player.setFoodLevel(20);
         player.setInvulnerable(true);
     }
@@ -109,8 +110,13 @@ public class GameManager {
             if (player != null) {
                 Location spawn = (i < spawnPoints.size()) ? spawnPoints.get(i) : spawnPoints.get(0);
                 player.teleport(spawn);
-                ScoreboardManager.createScoreboard(player, playerNames.size(), 100);
                 freezePlayer(player);
+                player.setGameMode(GameMode.ADVENTURE);
+                ScoreboardManager.createScoreboard(player, playerNames.size(), 100);
+                ItemStack boots = new ItemStack(Material.LEATHER_BOOTS);
+                player.getInventory().setBoots(boots);
+                PotionEffect invis = new PotionEffect(PotionEffectType.INVISIBILITY, 300, 0, false, true); // 600 ticks = 30 secondes
+                player.addPotionEffect(invis);
             }
         }
 
@@ -144,16 +150,26 @@ public class GameManager {
                 player.setFlySpeed(0.1f);
                 player.setInvulnerable(false);
                 player.setGameMode(GameMode.SURVIVAL);
+                player.heal(40.0);
                 player.setHealthScale(40.0);
+                player.removePotionEffect(PotionEffectType.INVISIBILITY);
 
                 // Casser les blocs autour
                 Location loc = player.getLocation();
-                for (int dx = -1; dx <= 1; dx++) {
-                    for (int dz = -1; dz <= 1; dz++) {
-                        Location blockLoc = loc.clone().add(dx, 0, dz);
-                        blockLoc.getBlock().breakNaturally();
-                    }
-                }
+                for (int dx = -5; dx <= 5; dx++) {  // Rayon en X
+                    for (int dz = -5; dz <= 5; dz++) {  // Rayon en Z
+                        for (int dy = -5; dy <= 5; dy++) {  // Rayon en Y
+                            Location blockLoc = loc.clone().add(dx, dy, dz);
+
+                            // S'assurer que la location est dans un rayon de 10 blocs
+                            if (blockLoc.distance(loc) <= 10) {
+                                // Casser le bloc à la location spécifiée
+                                if (blockLoc.getBlock().getType() != Material.AIR) {
+                                    blockLoc.getBlock().breakNaturally();
+                                }
+                            }
+                        }
+
 
                 main.getConfig().set("games." + arenaName + ".players", playerNames);
                 main.saveConfig();
@@ -163,6 +179,7 @@ public class GameManager {
                 new BukkitRunnable() {
                     int elapsed = 0;
 
+
                     @Override
                     public void run() {
                         List<String> players = main.getConfig().getStringList("games." + arenaName + ".players");
@@ -171,6 +188,8 @@ public class GameManager {
                             if (winner != null && winner.isOnline()) {
                                 winner.sendTitle("§6Félicitations !", "§aTu as gagné la partie !", 10, 70, 20);
                                 winner.sendMessage("§aTu as gagné la partie !");
+                                winner.heal(40.0);
+
 
                                 Location loc = winner.getLocation();
                                 for (int i = 0; i < 3; i++) {
@@ -189,6 +208,7 @@ public class GameManager {
 
                                 Bukkit.getScheduler().runTaskLater(main, () -> {
                                     if (winner.isOnline()) {
+                                        Bukkit.dispatchCommand(Bukkit.getConsoleSender(), "clean" + winner.getName());
                                         Bukkit.dispatchCommand(winner, "lobby");
                                         Bukkit.dispatchCommand(Bukkit.getConsoleSender(), "mvdelete Event");
                                         Bukkit.dispatchCommand(Bukkit.getConsoleSender(), "mvconfirm");
@@ -220,11 +240,9 @@ public class GameManager {
                     }
                 }.runTaskTimer(main, 0L, 20L);
 
-
-                player.sendMessage("§aLe battleroyale commence ! Bonne chance.");
             }
         }
-
-        Bukkit.broadcastMessage("§6[Battle Royale] §fLe battleroyale §ecommence ! §fQue le meilleur gagne !");
     }
-}
+            }
+        }
+    }
