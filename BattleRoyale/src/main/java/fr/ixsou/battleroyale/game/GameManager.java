@@ -75,12 +75,14 @@ public class GameManager {
 
         for (String entry : raw) {
             String[] split = entry.split(",");
-            if (split.length == 3) {
+            if (split.length >= 3) {
                 try {
                     double x = Double.parseDouble(split[0]);
                     double y = Double.parseDouble(split[1]);
                     double z = Double.parseDouble(split[2]);
-                    locs.add(new Location(world, x, y, z));
+                    float yaw = (split.length >= 4) ? Float.parseFloat(split[3]) : 0.0f;
+                    float pitch = (split.length >= 5) ? Float.parseFloat(split[4]) : 0.0f;
+                    locs.add(new Location(world, x, y, z, yaw, pitch));
                 } catch (Exception ignored) {
                     Bukkit.getLogger().warning("[BattleRoyale] Coordonnées invalides pour '" + arenaName + "': " + entry);
                 }
@@ -197,7 +199,7 @@ public class GameManager {
                                     }
                                     // Reset de l’arène
                                     main.getConfig().set("games." + arenaName + ".players", null);
-                                    main.getConfig().set("games." + arenaName + ".enable", true);
+                                    main.getConfig().set("games." + arenaName + ".enable", Optional.of(true));
                                     main.saveConfig();
 
                                 }, 200L); // 200 ticks = 10 secondes
