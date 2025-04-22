@@ -1,8 +1,0 @@
-<component name="ArtifactManager">
-  <artifact type="jar" name="BattleRoyale:jar">
-    <output-path>$PROJECT_DIR$/out/artifacts/BattleRoyale_jar</output-path>
-    <root id="archive" name="BattleRoyale.jar">
-      <element id="module-output" name="BattleRoyale" />
-    </root>
-  </artifact>
-</component>
