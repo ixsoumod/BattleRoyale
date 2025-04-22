@@ -1,0 +1,14 @@
+name: BattleRoyaleRework
+version: '1.0-REWORKED'
+main: fr.Mathilde.battleRoyaleRework.BattleRoyaleRework
+api-version: '1.21'
+authors:
+  - Mathildeuh
+  - Ixsou_mod
+commands:
+  battleroyale:
+    aliases: br
+    description: "Manage Battle Royale games."
+    usage: "/battleroyale <join|reload|force|setspawnpoint>"
+    permission: br.command.use
+    permission-message: "You do not have permission to use this command."
