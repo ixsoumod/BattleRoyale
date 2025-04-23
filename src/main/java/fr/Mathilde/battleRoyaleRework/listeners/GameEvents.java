@@ -124,4 +124,5 @@ public class GameEvents implements Listener {
         player.setAbsorptionAmount(0);
         player.setHealthScale(20.0);
     }
+
 }
