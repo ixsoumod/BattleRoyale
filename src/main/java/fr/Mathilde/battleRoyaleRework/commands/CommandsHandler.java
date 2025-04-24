@@ -56,6 +56,11 @@ public class CommandsHandler implements CommandExecutor, TabCompleter {
             return;
         }
 
+        if (gameManager.isPlayerInGame(player)) {
+            player.sendMessage("§cTu es déjà dans une arène !");
+            return;
+        }
+
         Optional<String> arena = gameManager.findAvailableArena(args.length > 0 ? args[0] : null);
         if (arena.isPresent()) {
             gameManager.addPlayer(arena.get(), player.getUniqueId().toString());

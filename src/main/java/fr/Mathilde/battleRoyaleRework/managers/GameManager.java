@@ -551,4 +551,13 @@ public class GameManager {
                 .filter(arenaName -> gamesSection.getConfigurationSection(arenaName).getBoolean("enable", false))
                 .collect(Collectors.toList());
     }
+
+    public Boolean isPlayerInGame(Player player) {
+        for (Set<String> players : arenaPlayers.values()) {
+            if (players.contains(player.getName())) {
+                return true;
+            }
+        }
+        return false;
+    }
 }
