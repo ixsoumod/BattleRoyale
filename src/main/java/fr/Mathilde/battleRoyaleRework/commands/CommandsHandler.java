@@ -56,19 +56,41 @@ public class CommandsHandler implements CommandExecutor, TabCompleter {
             return;
         }
 
-        if (gameManager.isPlayerInGame(player)) {
+        if (gameManager.getPlayerArena(player.getUniqueId().toString()) != null) {
             player.sendMessage("§cTu es déjà dans une arène !");
             return;
         }
 
         Optional<String> arena = gameManager.findAvailableArena(args.length > 0 ? args[0] : null);
         if (arena.isPresent()) {
-            gameManager.addPlayer(arena.get(), player.getUniqueId().toString());
-            player.sendMessage("§aTu as rejoint l'arène §e" + arena.get());
+            String arenaName = arena.get();
+            gameManager.addPlayer(arenaName, player.getUniqueId().toString());
+            player.sendMessage("§aTu as rejoint l'arène §e" + arenaName);
+
+            // Récupère le nombre de joueurs actuels et le nombre requis pour démarrer
+            Set<String> playersInArena = gameManager.getPlayersInArena(arenaName);
+            int currentPlayers = playersInArena.size();
+            int playersToStart = gameManager.PLAYERS_TO_START;
+
+            // Broadcast aux joueurs déjà dans l'arène
+            for (String playerName : playersInArena) {
+                Player arenaPlayer = plugin.getServer().getPlayer(playerName);
+                if (arenaPlayer != null && !arenaPlayer.getUniqueId().toString().equals(player.getUniqueId().toString())) {
+                    arenaPlayer.sendMessage("§e" + player.getName() + " a rejoint l'arène ! (" + currentPlayers + "/" + playersToStart + ")");
+                }
+            }
+
+            // Message au joueur qui rejoint
+            if (currentPlayers >= playersToStart) {
+                player.sendMessage("§aLe nombre de joueurs requis pour démarrer la partie est atteint !");
+            } else {
+                player.sendMessage("§eEn attente de joueurs... (" + currentPlayers + "/" + playersToStart + ")");
+            }
         } else {
             player.sendMessage("§cAucune arène disponible !");
         }
     }
+
 
     private void handleLeaveCommand(CommandSender sender) {
         if (!(sender instanceof Player player)) {
@@ -95,14 +117,14 @@ public class CommandsHandler implements CommandExecutor, TabCompleter {
         }
 
         if (args.length != 1) {
-            player.sendMessage("§cUsage : /br setspawnpoint <arena>");
+            player.sendMessage("§cUsage : /br setspawnpoint <world>");
             return;
         }
 
-        String arenaName = args[0];
+        String worldName = args[0];
         Location loc = player.getLocation();
-        if (gameManager.addSpawnPoint(arenaName, loc)) {
-            player.sendMessage("§aSpawnpoint ajouté pour l'arène §e" + arenaName);
+        if (gameManager.addSpawnPoint(worldName, loc)) {
+            player.sendMessage("§aSpawnpoint ajouté pour le monde §e" + worldName);
         } else {
             player.sendMessage("§cImpossible d'ajouter le spawnpoint !");
         }
@@ -131,10 +153,15 @@ public class CommandsHandler implements CommandExecutor, TabCompleter {
         }
 
         String arenaName = args.length > 0 ? args[0] : gameManager.getPlayerArena(player.getUniqueId().toString());
-        if (arenaName != null && gameManager.startGame(arenaName)) {
+        if (arenaName == null) {
+            player.sendMessage("§cAucune arène spécifiée ou trouvée !");
+            return;
+        }
+
+        if (gameManager.startGame(arenaName)) {
             player.sendMessage("§aTu as forcé le lancement de l'arène §e" + arenaName);
         } else {
-            player.sendMessage("§cImpossible de démarrer l'arène !");
+            player.sendMessage("§cImpossible de démarrer l'arène §e" + arenaName + "§c. Vérifie qu'elle est activée et qu'il y a des joueurs.");
         }
     }
 

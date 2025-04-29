@@ -152,4 +152,27 @@ public class ScoreboardManager {
     public static boolean hasScoreboard(Player player) {
         return player != null && playerBoards.containsKey(player.getUniqueId());
     }
+
+    public static void updateWinnerScoreboard(Player winner, String arenaName) {
+        // Vérifie si le joueur est valide
+        if (winner == null) return;
+
+        // Crée un nouveau scoreboard pour le gagnant
+        org.bukkit.scoreboard.ScoreboardManager manager = Bukkit.getScoreboardManager();
+        if (manager == null) return;
+
+        Scoreboard board = manager.getNewScoreboard();
+        Objective objective = board.registerNewObjective("victory", Criteria.DUMMY, ChatColor.GOLD + "Victoire !");
+        objective.setDisplaySlot(DisplaySlot.SIDEBAR);
+
+        // Ajoute des informations au scoreboard
+        objective.getScore(ChatColor.GREEN + "Arène: " + ChatColor.YELLOW + arenaName).setScore(2);
+        objective.getScore(ChatColor.GREEN + "Statut: " + ChatColor.YELLOW + "Gagnant").setScore(1);
+
+        // Applique le scoreboard au joueur
+        winner.setScoreboard(board);
+
+        // Envoie un message de confirmation
+        winner.sendMessage(ChatColor.GOLD + "[BattleRoyale] Scoreboard mis à jour pour la victoire !");
+    }
 }

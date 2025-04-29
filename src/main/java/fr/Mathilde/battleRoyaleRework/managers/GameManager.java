@@ -26,7 +26,7 @@ public class GameManager {
     private final Map<String, BukkitTask> arenaTasks = new ConcurrentHashMap<>();
 
     // Constants to improve readability and ease of configuration
-    private static final int MIN_PLAYERS_TO_START = 20;
+    public static final int PLAYERS_TO_START = 20;
     private static final int COUNTDOWN_SECONDS = 60;
     private static final int PRE_GAME_FREEZE_SECONDS = 15;
     private static final int PLAYER_HEALTH_SCALE = 40;
@@ -80,7 +80,7 @@ public class GameManager {
     public void checkAndStartCountdown(String arenaName) {
         Set<String> players = getPlayers(arenaName);
 
-        if (players.size() >= MIN_PLAYERS_TO_START && !countdownStarted.contains(arenaName)) {
+        if (players.size() >= PLAYERS_TO_START && !countdownStarted.contains(arenaName)) {
             countdownStarted.add(arenaName);
             startCountdown(arenaName, new ArrayList<>(players));
         }
@@ -123,25 +123,17 @@ public class GameManager {
         arenaTasks.put(arenaName, task);
     }
 
-    private List<Location> loadSpawnPoints(String arenaName) {
-        // Return cached spawn points if available
-        if (spawnPointCache.containsKey(arenaName)) {
-            return spawnPointCache.get(arenaName);
-        }
-
+    private List<Location> loadSpawnPoints(String worldName) {
         List<Location> locs = new ArrayList<>();
-        ConfigurationSection arenaSection = plugin.getConfig().getConfigurationSection("games." + arenaName);
-        if (arenaSection == null) return locs;
+        ConfigurationSection spawnPointsSection = plugin.getConfig().getConfigurationSection("spawnpoints");
+        if (spawnPointsSection == null) return locs;
 
-        String worldName = arenaSection.getString("world");
+        List<String> raw = spawnPointsSection.getStringList(worldName);
         World world = Bukkit.getWorld(worldName);
         if (world == null) {
-            plugin.getLogger().log(Level.WARNING,
-                    String.format("[BattleRoyale] Monde '%s' introuvable pour le battleroyale '%s'", worldName, arenaName));
+            plugin.getLogger().warning("[BattleRoyale] Le monde '" + worldName + "' n'est pas chargé.");
             return locs;
         }
-
-        List<String> raw = arenaSection.getStringList("spawnpoint");
 
         for (String entry : raw) {
             String[] split = entry.split(",");
@@ -154,15 +146,11 @@ public class GameManager {
                     float pitch = (split.length >= 5) ? Float.parseFloat(split[4]) : 0.0f;
                     locs.add(new Location(world, x, y, z, yaw, pitch));
                 } catch (NumberFormatException e) {
-                    plugin.getLogger().log(Level.WARNING,
-                            "[BattleRoyale] Coordonnées invalides pour '{0}': {1}",
-                            new Object[]{arenaName, entry});
+                    plugin.getLogger().warning("[BattleRoyale] Coordonnées invalides pour '" + worldName + "': " + entry);
                 }
             }
         }
 
-        // Cache the spawn points
-        spawnPointCache.put(arenaName, locs);
         return locs;
     }
 
@@ -180,71 +168,44 @@ public class GameManager {
     }
 
     private void teleportAndFreeze(String arenaName, List<String> playerNames) {
-        List<Location> spawnPoints = loadSpawnPoints(arenaName);
+        ConfigurationSection arenaSection = plugin.getConfig().getConfigurationSection("games." + arenaName);
+        if (arenaSection == null) {
+            plugin.getLogger().warning("[BattleRoyale] L'arène '" + arenaName + "' n'existe pas.");
+            return;
+        }
+
+        List<String> worlds = arenaSection.getStringList("worlds");
+        if (worlds.isEmpty()) {
+            plugin.getLogger().warning("[BattleRoyale] Aucun monde défini pour l'arène '" + arenaName + "'.");
+            return;
+        }
+
+        // Choisir un monde aléatoire
+        String randomWorld = worlds.get(ThreadLocalRandom.current().nextInt(worlds.size()));
+        List<Location> spawnPoints = loadSpawnPoints(randomWorld);
         if (spawnPoints.isEmpty()) {
-            plugin.getLogger().warning("[BattleRoyale] Aucun point de spawn trouvé pour l'arène " + arenaName);
-            countdownStarted.remove(arenaName);
+            plugin.getLogger().warning("[BattleRoyale] Aucun point de spawn trouvé pour le monde '" + randomWorld + "'.");
             return;
         }
 
-        // Shuffle more efficiently using ThreadLocalRandom
-        for (int i = spawnPoints.size() - 1; i > 0; i--) {
-            int index = ThreadLocalRandom.current().nextInt(i + 1);
-            Location temp = spawnPoints.get(index);
-            spawnPoints.set(index, spawnPoints.get(i));
-            spawnPoints.set(i, temp);
-        }
+        // Mélanger les points de spawn
+        Collections.shuffle(spawnPoints);
 
-        // Filter out offline players
+        // Téléporter les joueurs
         List<Player> onlinePlayers = playerNames.stream()
-                .map(Bukkit::getPlayerExact)
+                .map(Bukkit::getPlayer)
                 .filter(Objects::nonNull)
-                .collect(Collectors.toList());
+                .toList();
 
-        int playersCount = onlinePlayers.size();
-
-        if (playersCount == 0) {
-            countdownStarted.remove(arenaName);
-            return;
-        }
-
-        // Teleport all players simultaneously using Paper's async teleport when available
-        for (int i = 0; i < playersCount; i++) {
+        for (int i = 0; i < onlinePlayers.size(); i++) {
             Player player = onlinePlayers.get(i);
             Location spawn = spawnPoints.get(i % spawnPoints.size());
-
-            // Use synchronous teleport for compatibility
             player.teleport(spawn);
-            ScoreboardManager.createScoreboard(player, playersCount, 100);
             freezePlayer(player);
         }
 
-        BukkitTask task = new BukkitRunnable() {
-            int time = PRE_GAME_FREEZE_SECONDS;
-
-            @Override
-            public void run() {
-                // Create title message once and reuse
-                String title = ChatColor.RED + "Départ du battleroyale dans";
-
-                for (Player player : onlinePlayers) {
-                    if (player.isOnline()) {
-                        String subtitle = ChatColor.YELLOW + String.valueOf(time) + "s";
-                        player.sendTitle(title, subtitle, 0, 20, 0);
-                    }
-                }
-
-                if (time <= 0) {
-                    cancel();
-                    arenaTasks.remove(arenaName);
-                    unfreezeAndStart(arenaName, onlinePlayers);
-                }
-
-                time--;
-            }
-        }.runTaskTimer(plugin, 0L, 20L);
-
-        arenaTasks.put(arenaName, task);
+        // Lancer le compte à rebours
+        startCountdown(arenaName, playerNames);
     }
 
     private void unfreezeAndStart(String arenaName, List<Player> players) {
@@ -295,6 +256,7 @@ public class GameManager {
                     }
                     cancel();
                     arenaTasks.remove(arenaName);
+
                     return;
                 }
                 // Game ended with no players
@@ -331,28 +293,14 @@ public class GameManager {
         winner.sendTitle(ChatColor.GOLD + "Félicitations !", ChatColor.GREEN + "Tu as gagné la partie !", 10, 70, 20);
         winner.sendMessage(ChatColor.GREEN + "Tu as gagné la partie !");
 
+        // Met à jour le scoreboard pour afficher la victoire
+        ScoreboardManager.updateWinnerScoreboard(winner, arenaName);
+
         // Spawn des feux d'artifice
         spawnWinnerFireworks(winner);
 
-        // Planification du nettoyage et de la réinitialisation
-        Bukkit.getScheduler().runTaskLater(plugin, () -> {
-            if (winner.isOnline()) {
-                Bukkit.dispatchCommand(winner, "lobby");
+        resetArena(arenaName);
 
-                // Suppression et recréation du monde
-                if (WorldManager.deleteWorld("Event")) {
-                    plugin.getLogger().info("[BattleRoyale] Monde 'Event' supprimé.");
-                }
-
-                if (WorldManager.cloneWorld("EventTemplate", "Event")) {
-                    plugin.getLogger().info("[BattleRoyale] Monde 'Event' cloné avec succès.");
-                }
-
-                WorldManager.loadWorld("Event");
-            }
-
-            resetArena(arenaName);
-        }, WINNER_CELEBRATION_TICKS);
     }
 
     private void spawnWinnerFireworks(Player winner) {
@@ -499,23 +447,19 @@ public class GameManager {
         return removed;
     }
 
-    public boolean addSpawnPoint(String arenaName, Location location) {
-        ConfigurationSection arenaSection = plugin.getConfig().getConfigurationSection("games." + arenaName);
-        if (arenaSection == null) {
-            plugin.getLogger().warning("[BattleRoyale] L'arène '" + arenaName + "' n'existe pas dans la configuration.");
-            return false;
+    public boolean addSpawnPoint(String worldName, Location location) {
+        ConfigurationSection spawnPointsSection = plugin.getConfig().getConfigurationSection("spawnpoints");
+        if (spawnPointsSection == null) {
+            spawnPointsSection = plugin.getConfig().createSection("spawnpoints");
         }
 
         String spawnPoint = location.getX() + "," + location.getY() + "," + location.getZ() + "," + location.getYaw() + "," + location.getPitch();
-        List<String> spawnPoints = arenaSection.getStringList("spawnpoint");
+        List<String> spawnPoints = spawnPointsSection.getStringList(worldName);
         spawnPoints.add(spawnPoint);
-        arenaSection.set("spawnpoint", spawnPoints);
+        spawnPointsSection.set(worldName, spawnPoints);
         plugin.saveConfig();
 
-        // Recharge les points d'apparition pour mettre à jour le cache
-        reloadSpawnPoints(arenaName);
-
-        plugin.getLogger().info("[BattleRoyale] Point d'apparition ajouté pour l'arène '" + arenaName + "'.");
+        plugin.getLogger().info("[BattleRoyale] Point d'apparition ajouté pour le monde '" + worldName + "'.");
         return true;
     }
 
@@ -528,9 +472,13 @@ public class GameManager {
         return null;
     }
 
+    public Set<String> getPlayersInArena(String arenaName) {
+        return arenaPlayers.getOrDefault(arenaName, Collections.emptySet());
+    }
+
     public boolean startGame(String arenaName) {
         Set<String> players = arenaPlayers.get(arenaName);
-        if (players == null || players.size() < MIN_PLAYERS_TO_START) {
+        if (players == null) {
             plugin.getLogger().warning("[BattleRoyale] Impossible de démarrer l'arène '" + arenaName + "'. Pas assez de joueurs.");
             return false;
         }
